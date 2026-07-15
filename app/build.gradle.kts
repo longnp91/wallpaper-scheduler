@@ -48,6 +48,12 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -82,9 +88,12 @@ dependencies {
 
     // JUnit
     testImplementation("junit:junit:4.13.2")
-
-    // Room Testing
-    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("androidx.test:core-ktx:1.5.0")
+    testImplementation("androidx.test.ext:junit:1.1.5")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("androidx.room:room-testing:2.6.1")
+    testImplementation("androidx.work:work-testing:2.9.0")
 
     // Compose instrumentation and debug tools
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.01"))
