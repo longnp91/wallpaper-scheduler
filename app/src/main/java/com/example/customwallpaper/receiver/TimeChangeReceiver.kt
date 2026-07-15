@@ -6,18 +6,22 @@ import android.content.Intent
 import android.util.Log
 import com.example.customwallpaper.worker.WallpaperSchedulerHelper
 
-class BootCompletedReceiver : BroadcastReceiver() {
+class TimeChangeReceiver : BroadcastReceiver() {
     override fun onReceive(
         context: Context,
         intent: Intent,
     ) {
-        Log.d(TAG, "onReceive called with action: ${intent.action}")
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+        val action = intent.action
+        Log.d(TAG, "onReceive called with action: $action")
+        if (action == Intent.ACTION_TIME_CHANGED ||
+            action == Intent.ACTION_TIMEZONE_CHANGED ||
+            action == Intent.ACTION_DATE_CHANGED
+        ) {
             WallpaperSchedulerHelper.triggerImmediateEvaluation(context)
         }
     }
 
     companion object {
-        private const val TAG = "BootCompletedReceiver"
+        private const val TAG = "TimeChangeReceiver"
     }
 }
