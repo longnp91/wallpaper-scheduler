@@ -69,6 +69,120 @@ install_java_17() {
   sudo apt-get install -y openjdk-17-jdk
 }
 
+# 1.5. Gradle Wrapper Check & Install
+check_gradle() {
+  log_info "Checking Gradle wrapper and configuration files..."
+  local ok=true
+  if [ ! -f "build.gradle.kts" ]; then
+    log_error "build.gradle.kts is missing."
+    ok=false
+  fi
+  if [ ! -f "settings.gradle.kts" ]; then
+    log_error "settings.gradle.kts is missing."
+    ok=false
+  fi
+  if [ ! -x "./gradlew" ]; then
+    log_error "Executable ./gradlew wrapper is missing."
+    ok=false
+  fi
+  if [ "$ok" = "false" ]; then
+    return 1
+  fi
+  log_success "Gradle wrapper and configurations are present."
+  return 0
+}
+
+install_gradle() {
+  log_info "Verifying that 'unzip' command is installed..."
+  if ! command -v unzip >/dev/null 2>&1; then
+    log_error "'unzip' command is required but not installed. Install it first."
+    return 1
+  fi
+
+  log_info "Creating Gradle configuration files..."
+
+  if [ ! -f "settings.gradle.kts" ]; then
+    cat << 'EOF' > settings.gradle.kts
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "wallpaper-scheduler"
+include(":app")
+EOF
+    log_success "Created settings.gradle.kts"
+  fi
+
+  if [ ! -f "build.gradle.kts" ]; then
+    cat << 'EOF' > build.gradle.kts
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    id("com.android.application") version "8.3.0" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+}
+EOF
+    log_success "Created build.gradle.kts"
+  fi
+
+  if [ ! -x "./gradlew" ]; then
+    log_info "Bootstrapping Gradle wrapper..."
+    local tmp_dir=".tmp"
+    mkdir -p "$tmp_dir"
+    local zip_path="$tmp_dir/gradle-8.7-bin.zip"
+    local gradle_url="https://services.gradle.org/distributions/gradle-8.7-bin.zip"
+
+    log_info "Downloading Gradle 8.7 to $zip_path..."
+    if ! wget -q --show-progress "$gradle_url" -O "$zip_path"; then
+      log_error "Failed to download Gradle from $gradle_url"
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+
+    log_info "Extracting Gradle 8.7..."
+    if ! unzip -q "$zip_path" -d "$tmp_dir"; then
+      log_error "Failed to extract Gradle 8.7"
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+
+    local gradle_bin
+    gradle_bin=$(find "$tmp_dir" -type f -name "gradle" -path "*/bin/gradle" | head -n 1)
+    if [ -z "$gradle_bin" ]; then
+      log_error "Could not locate gradle executable in extracted files."
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+
+    log_info "Executing local gradle to generate wrapper..."
+    if ! "$gradle_bin" wrapper --gradle-version 8.7; then
+      log_error "Failed to generate gradle wrapper."
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+
+    chmod +x gradlew
+    log_success "Generated and set permissions for ./gradlew wrapper."
+
+    log_info "Cleaning up temporary Gradle installer files..."
+    rm -rf "$tmp_dir"
+  else
+    log_success "Gradle wrapper already present and executable."
+  fi
+
+  return 0
+}
+
 # 2. KVM Hardware Virtualization Check & Install
 check_kvm() {
   log_info "Checking CPU virtualization..."
@@ -100,14 +214,26 @@ check_kvm() {
   local groups_list
   groups_list=$(id -nG)
   local kvm_ok=true
-  if ! echo "$groups_list" | grep -qE "\bkvm\b"; then
-    log_error "User '$USER' is not a member of the 'kvm' group."
+
+  # Check group enrollment safely using word boundaries on the user's groups list
+  if id -Gn "${USER}" 2>/dev/null | grep -qE "\bkvm\b"; then
+    if ! echo "$groups_list" | grep -qE "\bkvm\b"; then
+      log_warning "User '$USER' is enrolled in the 'kvm' group, but the current session is inactive. Run 'newgrp kvm' or restart the session to reload permissions."
+    fi
+  else
+    log_error "User '$USER' is not enrolled in the 'kvm' group."
     kvm_ok=false
   fi
-  if ! echo "$groups_list" | grep -qE "\blibvirt\b"; then
-    log_error "User '$USER' is not a member of the 'libvirt' group."
+
+  if id -Gn "${USER}" 2>/dev/null | grep -qE "\blibvirt\b"; then
+    if ! echo "$groups_list" | grep -qE "\blibvirt\b"; then
+      log_warning "User '$USER' is enrolled in the 'libvirt' group, but the current session is inactive. Run 'newgrp libvirt' or restart the session to reload permissions."
+    fi
+  else
+    log_error "User '$USER' is not enrolled in the 'libvirt' group."
     kvm_ok=false
   fi
+
   if [ "$kvm_ok" = "false" ]; then
     return 1
   fi
@@ -345,6 +471,23 @@ if ! check_java_17; then
       exit 1
     fi
     FAILED_CHECKS=$((FAILED_CHECKS - 1))
+  fi
+fi
+
+# 1.5. Gradle Wrapper
+if ! check_gradle; then
+  FAILED_CHECKS=$((FAILED_CHECKS + 1))
+  if [ "$CHECK_ONLY" = "false" ]; then
+    if install_gradle; then
+      if ! check_gradle; then
+        log_error "Gradle setup validation failed."
+        exit 1
+      fi
+      FAILED_CHECKS=$((FAILED_CHECKS - 1))
+    else
+      log_error "Gradle installation failed."
+      exit 1
+    fi
   fi
 fi
 

@@ -2,3 +2,17 @@
 .agents
 opencode.jsonc
 AGENTS.md
+
+# Gradle
+.gradle/
+build/
+
+# Android
+local.properties
+
+# IDEs
+.idea/
+*.iml
+
+# Temp files
+.tmp/
