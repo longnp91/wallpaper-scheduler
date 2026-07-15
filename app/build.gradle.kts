@@ -53,6 +53,7 @@ android {
 dependencies {
     // Core
     implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
