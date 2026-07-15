@@ -1,7 +1,7 @@
 # Database & Storage Design Specification: Scheduled Custom Wallpaper Application
 
 ## 1. Overview
-This document specifies the persistence and file storage architecture for the Wallpaper Scheduler application. To implement a reliable, duration-based wallpaper schedule with independent **Home screen** and **Lock screen** configurations, the application decouples database configurations from high-performance bitmap storage. 
+This document specifies the persistence and file storage architecture for the Wallpaper Scheduler application. To implement a reliable, duration-based wallpaper schedule with independent **Home screen** and **Lock screen** configurations, the application decouples database configurations from high-performance bitmap storage.
 
 The storage layer consists of two main components:
 1. **Room Database**: SQLite object-mapping library used to store the schedules' configuration metadata, timing constraints, day of week triggers, priority orders, and file path references. It acts as the single source of truth for the background evaluation engine.
@@ -59,25 +59,25 @@ import androidx.room.PrimaryKey
 data class WallpaperSchedule(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    
+
     @ColumnInfo(name = "weekdays")
     val weekdays: String,        // e.g. "MONDAY,TUESDAY,FRIDAY"
-    
+
     @ColumnInfo(name = "from_time_min")
     val fromTimeMin: Int,    // Start time (minutes from midnight: 0-1439)
-    
+
     @ColumnInfo(name = "to_time_min")
     val toTimeMin: Int,        // End time (minutes from midnight: 0-1439)
-    
+
     @ColumnInfo(name = "priority")
     val priority: Int,            // Numerical priority (higher values win)
-    
+
     @ColumnInfo(name = "home_wallpaper_path")
     val homeWallpaperPath: String?,
-    
+
     @ColumnInfo(name = "lock_wallpaper_path")
     val lockWallpaperPath: String?,
-    
+
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true
 )
@@ -113,7 +113,7 @@ interface ScheduleDao {
     suspend fun deleteSchedule(schedule: WallpaperSchedule)
 
     @Query("""
-        SELECT COUNT(*) FROM schedules 
+        SELECT COUNT(*) FROM schedules
         WHERE home_wallpaper_path = :path OR lock_wallpaper_path = :path
     """)
     suspend fun getPathReferenceCount(path: String): Int
@@ -162,22 +162,22 @@ When a schedule is removed, the DB row is first deleted. We then inspect the del
 flowchart TD
     StartDelete["Start deleteScheduleAndCleanupFiles"] --> DBDelete["dao.deleteSchedule(schedule)"]
     DBDelete --> CheckHome{"home_wallpaper_path != null?"}
-    
+
     CheckHome -- Yes --> QueryHomeRef["Query dao.getPathReferenceCount(home_path)"]
     QueryHomeRef --> CheckHomeRef{"Count == 0?"}
     CheckHomeRef -- Yes --> DeleteHomeFile["Delete Home File from filesDir"]
     CheckHomeRef -- No --> CheckLock
     DeleteHomeFile --> CheckLock
-    
+
     CheckHome -- No --> CheckLock
-    
+
     CheckLock{"lock_wallpaper_path != null\nAND != home_wallpaper_path?"}
     CheckLock -- Yes --> QueryLockRef["Query dao.getPathReferenceCount(lock_path)"]
     QueryLockRef --> CheckLockRef{"Count == 0?"}
     CheckLockRef -- Yes --> DeleteLockFile["Delete Lock File from filesDir"]
     CheckLockRef -- No --> EndDelete
     DeleteLockFile --> EndDelete
-    
+
     CheckLock -- No --> EndDelete
     EndDelete["End"]
 ```
@@ -185,8 +185,8 @@ flowchart TD
 #### Prospective Implementation
 ```kotlin
 suspend fun deleteScheduleAndCleanupFiles(
-    context: Context, 
-    dao: ScheduleDao, 
+    context: Context,
+    dao: ScheduleDao,
     schedule: WallpaperSchedule
 ) {
     // Delete the schedule row from SQLite database
@@ -219,7 +219,7 @@ suspend fun deleteScheduleAndCleanupFiles(
 ```
 
 ### Single Schedule Update (`updateScheduleAndCleanupFiles`)
-When updating a schedule's paths, we must execute the reference-counted file cleanup routine for the old file paths **BEFORE** updating the record in the database. 
+When updating a schedule's paths, we must execute the reference-counted file cleanup routine for the old file paths **BEFORE** updating the record in the database.
 
 > [!IMPORTANT]
 > **Delete-Before-Write Logic Constraint:** If the database write is committed first, the reference count of the old files drops to zero, but the app loses the target path strings (overwritten in DB). This leads to untrackable file storage leaks if the cleanup script fails mid-operation. By querying and clean-deleting files *before* committing the write, the app keeps a handle on the exact path strings. If the reference count is $\le 1$ (meaning the current schedule record is the sole referencer), the file is safely deleted from disk, followed by the database commit.
@@ -228,24 +228,24 @@ When updating a schedule's paths, we must execute the reference-counted file cle
 ```mermaid
 flowchart TD
     StartUpdate["Start updateScheduleAndCleanupFiles"] --> CheckHomeWP{"old_home_path != null\nAND != new_home_path?"}
-    
+
     CheckHomeWP -- Yes --> QueryHomeRef["Query dao.getPathReferenceCount(old_home_path)"]
     QueryHomeRef --> CheckHomeRef{"Count <= 1?"}
     CheckHomeRef -- Yes --> DeleteHomeFile["Delete Old Home File"]
     CheckHomeRef -- No --> CheckLockWP
     DeleteHomeFile --> CheckLockWP
-    
+
     CheckHomeWP -- No --> CheckLockWP
-    
+
     CheckLockWP{"old_lock_path != null\nAND != new_lock_path\nAND != old_home_path?"}
     CheckLockWP -- Yes --> QueryLockRef["Query dao.getPathReferenceCount(old_lock_path)"]
     QueryLockRef --> CheckLockRef{"Count <= 1?"}
     CheckLockRef -- Yes --> DeleteLockFile["Delete Old Lock File"]
     CheckLockRef -- No --> PersistUpdate
     DeleteLockFile --> PersistUpdate
-    
+
     CheckLockWP -- No --> PersistUpdate
-    
+
     PersistUpdate["dao.updateSchedule(newSchedule)"] --> EndUpdate["End"]
 ```
 
@@ -290,7 +290,7 @@ suspend fun updateScheduleAndCleanupFiles(
 ```
 
 ### Batch Deletion Logic
-If the user selects multiple schedules for batch deletion, executing the single deletion routine sequentially inside a loop yields $O(N)$ database queries and redundant transactions. 
+If the user selects multiple schedules for batch deletion, executing the single deletion routine sequentially inside a loop yields $O(N)$ database queries and redundant transactions.
 
 To perform a safe, highly performant batch deletion:
 1. **Identify Candidates**: Collect all unique, non-null file paths referenced across all selected schedules' `home_wallpaper_path` and `lock_wallpaper_path` columns into a set ($P_{candidate}$).

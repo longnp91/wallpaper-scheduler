@@ -89,7 +89,7 @@ import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 object WallpaperSchedulerHelper {
-    
+
     private const val WORK_NAME = "WallpaperEvaluationWork"
 
     /**
@@ -172,7 +172,7 @@ class CustomWallpaperApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        
+
         // Register TimeChangeReceiver programmatically to comply with API 26+ restrictions
         timeChangeReceiver = TimeChangeReceiver()
         val intentFilter = IntentFilter().apply {
@@ -194,27 +194,27 @@ The state machine below describes the background scheduler's states and transiti
 ```mermaid
 stateDiagram-v2
     [*] --> Idle : No Active Schedules
-    
+
     Idle --> Evaluating : RECEIVE_BOOT_COMPLETED<br/>/ Time or Timezone Shift
     Idle --> Scheduling : Schedule Created / Activated
-    
+
     Scheduling --> Waiting : Enqueue One-Shot Request<br/>(Delay calculated to next boundary)
-    
+
     Waiting --> Evaluating : Timer Fires (Delay Elapsed)
     Waiting --> Evaluating : RECEIVE_BOOT_COMPLETED<br/>/ Time or Timezone Shift / Schedule Changed<br/>(Immediate REPLACE enqueue)
-    
+
     state Evaluating {
         [*] --> QueryingDB
         QueryingDB --> CheckingCache : Active Rules Found
         QueryingDB --> NoOp : No Active Rules Found
-        
+
         CheckingCache --> ApplyingWallpaper : Cache Miss (New Winning Rule)
         CheckingCache --> NoOp : Cache Hit (Same Rule)
-        
+
         ApplyingWallpaper --> Success
         NoOp --> Success
     }
-    
+
     Evaluating --> Scheduling : Success / Complete
     Evaluating --> Waiting : Retry (Failure / Exception)
     Evaluating --> Idle : All Schedules Deactivated
@@ -262,7 +262,7 @@ sequenceDiagram
     Worker->>Eval: evaluateAndApply(context, dao)
     activate Eval
     Note over Eval: Sort rules by priority, start time, ID.<br/>Determine winning rule for Home & Lock screens.
-    
+
     alt Cache Miss (New wallpaper winning state)
         Eval->>WP: setBitmap(bakedFile, ..., FLAG_SYSTEM/FLAG_LOCK)
         activate WP
@@ -326,7 +326,7 @@ class WallpaperEvaluationWorkerTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        
+
         // 1. Initialize WorkManager in test mode
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
 
@@ -369,7 +369,7 @@ class WallpaperEvaluationWorkerTest {
 
         // Verify that execution completes successfully
         assertEquals(ListenableWorker.Result.success(), result)
-        
+
         // Cleanup mock file
         if (mockFile.exists()) {
             mockFile.delete()

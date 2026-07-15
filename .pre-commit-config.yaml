@@ -5,3 +5,21 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/jcchavezs/pre-commit-kotlin
+    rev: master
+    hooks:
+      - id: ktlint
+
+  - repo: local
+    hooks:
+      - id: gradle-help
+        name: Verify Gradle Configuration
+        entry: ./gradlew help
+        language: system
+        pass_filenames: false
+        always_run: true
