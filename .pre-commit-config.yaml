@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
       - id: end-of-file-fixer
@@ -11,7 +11,7 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/jcchavezs/pre-commit-kotlin
-    rev: master
+    rev: e4dc07468a29c1857804f9c0152c8c8a4124d28b
     hooks:
       - id: ktlint
 
