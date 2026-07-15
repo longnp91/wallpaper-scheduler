@@ -183,6 +183,34 @@ EOF
   return 0
 }
 
+# 1.7. ktlint Check & Install
+check_ktlint() {
+  log_info "Checking ktlint command..."
+  if command -v ktlint >/dev/null 2>&1 || [ -x "$HOME/.local/bin/ktlint" ]; then
+    log_success "ktlint is available."
+    return 0
+  fi
+  log_error "ktlint command not found in PATH."
+  return 1
+}
+
+install_ktlint() {
+  log_info "Installing ktlint to ~/.local/bin/ktlint..."
+  mkdir -p "$HOME/.local/bin"
+  local ktlint_url="https://github.com/pinterest/ktlint/releases/download/1.0.1/ktlint"
+  local dest_path="$HOME/.local/bin/ktlint"
+
+  log_info "Downloading ktlint from $ktlint_url..."
+  if ! wget -q --show-progress "$ktlint_url" -O "$dest_path"; then
+    log_error "Failed to download ktlint from $ktlint_url"
+    return 1
+  fi
+
+  chmod +x "$dest_path"
+  log_success "ktlint installed and made executable at $dest_path."
+  return 0
+}
+
 # 2. KVM Hardware Virtualization Check & Install
 check_kvm() {
   log_info "Checking CPU virtualization..."
@@ -486,6 +514,23 @@ if ! check_gradle; then
       FAILED_CHECKS=$((FAILED_CHECKS - 1))
     else
       log_error "Gradle installation failed."
+      exit 1
+    fi
+  fi
+fi
+
+# 1.7. ktlint
+if ! check_ktlint; then
+  FAILED_CHECKS=$((FAILED_CHECKS + 1))
+  if [ "$CHECK_ONLY" = "false" ]; then
+    if install_ktlint; then
+      if ! check_ktlint; then
+        log_error "ktlint setup validation failed."
+        exit 1
+      fi
+      FAILED_CHECKS=$((FAILED_CHECKS - 1))
+    else
+      log_error "ktlint installation failed."
       exit 1
     fi
   fi

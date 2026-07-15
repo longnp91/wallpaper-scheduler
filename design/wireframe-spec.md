@@ -19,7 +19,7 @@ graph TB
         subgraph TopBar ["Top App Bar"]
             Title["Wallpaper Scheduler"]
         end
-        
+
         subgraph ScheduleList ["Schedule List (LazyColumn)"]
             subgraph Schedule1 ["Schedule 1: Work Hours (Active)"]
                 S1_Preview["[Home/Lock Thumbnails]"]
@@ -28,7 +28,7 @@ graph TB
                 S1_Tags["Screens: [Home] [Lock]"]
                 S1_Toggle["Status: [ ON ]"]
             end
-            
+
             subgraph Schedule2 ["Schedule 2: Evening (Disabled)"]
                 S2_Preview["[Home Thumbnail Only]"]
                 S2_Time["From 05:00 PM To 10:00 PM"]
@@ -96,7 +96,7 @@ graph TB
 
         subgraph TargetPreviewsSection ["Wallpaper Media & Cropped Previews"]
             SelectWPBtn["[Select Wallpaper (Launches SAF Picker)]"]
-            
+
             subgraph DualPreviews ["Cropped Preview Slots (Separated Targets)"]
                 subgraph HomePreviewSlot ["Home Screen Preview Slot"]
                     HomePreview["[ Cropped Home Thumbnail / Tap to Edit Crop ]"]
@@ -232,7 +232,7 @@ sequenceDiagram
     Note over Eval: Triggers on:<br/>- Boundary transition (start/end of schedule)<br/>- Device Boot (RECEIVE_BOOT_COMPLETED)<br/>- Manual config change (save/delete/toggle)<br/>- Clock/Timezone update (ACTION_TIME_CHANGED, ACTION_TIMEZONE_CHANGED)
     Eval->>DB: Query all active rules for current weekday
     DB-->>Eval: Return list of active rules
-    
+
     Note over Eval: --- Independent Screen Evaluation ---
     Note over Eval: Sort rules independently for Home (FLAG_SYSTEM) and Lock (FLAG_LOCK):<br/>1. Priority (Descending)<br/>2. Start Time (Descending)<br/>3. Schedule ID (Descending) as deterministic tie-breaker
 

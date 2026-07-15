@@ -10,6 +10,11 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
+  - repo: https://github.com/jcchavezs/pre-commit-kotlin
+    rev: master
+    hooks:
+      - id: ktlint
+
   - repo: local
     hooks:
       - id: gradle-help

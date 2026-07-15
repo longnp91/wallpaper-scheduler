@@ -32,7 +32,7 @@ The application requires explicit system clearance to manipulate device backgrou
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.Material3.DayNight">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -52,13 +52,13 @@ The application requires explicit system clearance to manipulate device backgrou
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-        
+
     </application>
 </manifest>
 ```
 
 ### Runtime Broadcast Registration (Android 8.0+ / API 26 Limitation)
-Starting with Android 8.0 (API 26), the system enforces restrictions on implicit broadcast receivers declared statically in the `AndroidManifest.xml`. Specifically, broadcast actions like `Intent.ACTION_TIME_CHANGED` (or `android.intent.action.TIME_SET`) and `Intent.ACTION_TIMEZONE_CHANGED` can no longer be declared in the manifest. 
+Starting with Android 8.0 (API 26), the system enforces restrictions on implicit broadcast receivers declared statically in the `AndroidManifest.xml`. Specifically, broadcast actions like `Intent.ACTION_TIME_CHANGED` (or `android.intent.action.TIME_SET`) and `Intent.ACTION_TIMEZONE_CHANGED` can no longer be declared in the manifest.
 
 Instead, the application must register `TimeChangeReceiver` programmatically at runtime to dynamically listen for these system updates. This is typically done inside the `Application` class lifecycle (during `onCreate`) or within a persistent background service lifecycle:
 
@@ -73,7 +73,7 @@ class CustomWallpaperApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        
+
         // Register TimeChangeReceiver programmatically for implicit time broadcasts
         timeChangeReceiver = TimeChangeReceiver()
         val intentFilter = IntentFilter().apply {
@@ -105,7 +105,7 @@ val pickImageLauncher = rememberLauncherForActivityResult(
             // Persist read access across system reboots and long background durations
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(secureUri, takeFlags)
-            
+
             // Route the verified token to the editing view
             navigateToEditingScreen(secureUri)
         } catch (e: SecurityException) {
@@ -164,7 +164,7 @@ enum class WallpaperTarget {
 
 @Composable
 fun WallpaperCropEditor(
-    imageUri: Uri, 
+    imageUri: Uri,
     onCropConfirmed: (scale: Float, offset: Offset, target: WallpaperTarget) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -173,7 +173,7 @@ fun WallpaperCropEditor(
     var showTargetDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        
+
         // PLANE 1: Interactive Touch Surface (Handles Scaling and Panning Translations)
         Box(
             modifier = Modifier
@@ -294,7 +294,7 @@ fun WallpaperCropEditor(
 ---
 
 ## 5. Media Rendering Pipeline ("Baking")
-To decouple background scheduling execution from heavy calculations, image transformation is processed upfront. Reading high-resolution source images directly into memory can trigger an `OutOfMemoryError` (OOM) on mobile devices, especially when parsing large files. 
+To decouple background scheduling execution from heavy calculations, image transformation is processed upfront. Reading high-resolution source images directly into memory can trigger an `OutOfMemoryError` (OOM) on mobile devices, especially when parsing large files.
 
 To prevent this, the baking pipeline reads the image's dimensions first without loading its pixels (`inJustDecodeBounds = true`), computes an optimal subsampling factor (`inSampleSize`) based on target display dimensions, loads a downscaled representation into memory, draws it onto an off-screen Canvas matching the display dimensions, and saves the resulting compressed JPEG to internal storage.
 
@@ -343,7 +343,7 @@ fun bakeWallpaperFromUri(
         if (srcWidth > screenWidth || srcHeight > screenHeight) {
             val halfWidth = srcWidth / 2
             val halfHeight = srcHeight / 2
-            while ((halfWidth / inSampleSize) >= screenWidth && 
+            while ((halfWidth / inSampleSize) >= screenWidth &&
                    (halfHeight / inSampleSize) >= screenHeight) {
                 inSampleSize *= 2
             }
@@ -352,7 +352,7 @@ fun bakeWallpaperFromUri(
         // Step 3: Decode full bitmap with computed inSampleSize (inJustDecodeBounds = false)
         options.inJustDecodeBounds = false
         options.inSampleSize = inSampleSize
-        
+
         val subsampledBitmap = contentResolver.openInputStream(sourceUri).use { inputStream ->
             BitmapFactory.decodeStream(inputStream, null, options)
         } ?: return null
@@ -444,7 +444,7 @@ interface ScheduleDao {
     suspend fun deleteSchedule(schedule: WallpaperSchedule)
 
     @Query("""
-        SELECT COUNT(*) FROM schedules 
+        SELECT COUNT(*) FROM schedules
         WHERE home_wallpaper_path = :path OR lock_wallpaper_path = :path
     """)
     suspend fun getPathReferenceCount(path: String): Int
@@ -464,8 +464,8 @@ import java.io.File
  * Safely deletes a schedule and cleans up its associated files if they are not referenced by other schedules.
  */
 suspend fun deleteScheduleAndCleanupFiles(
-    context: Context, 
-    dao: ScheduleDao, 
+    context: Context,
+    dao: ScheduleDao,
     schedule: WallpaperSchedule
 ) {
     // Delete the schedule row from SQLite database
@@ -565,13 +565,13 @@ object WallpaperEvaluator {
 
     suspend fun evaluateAndApply(context: Context, dao: ScheduleDao) {
         val activeSchedules = dao.getActiveSchedules()
-        
+
         val calendar = Calendar.getInstance()
         val currentDay = getDayOfWeekString(calendar.get(Calendar.DAY_OF_WEEK))
         val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
         val currentMinute = calendar.get(Calendar.MINUTE)
         val currentTimeMin = currentHour * 60 + currentMinute
-        
+
         val yesterdayCalendar = (calendar.clone() as Calendar).apply { add(Calendar.DAY_OF_WEEK, -1) }
         val yesterday = getDayOfWeekString(yesterdayCalendar.get(Calendar.DAY_OF_WEEK))
 
@@ -744,15 +744,15 @@ class WallpaperEvaluationWorker(
     override suspend fun doWork(): Result {
         val database = WallpaperDatabase.getInstance(applicationContext)
         val dao = database.scheduleDao()
-        
+
         return try {
             // Run stateful evaluation engine
             WallpaperEvaluator.evaluateAndApply(applicationContext, dao)
-            
+
             // Re-calculate boundary transitions and chain next worker
             val activeSchedules = dao.getActiveSchedules()
             scheduleNextEvaluation(applicationContext, activeSchedules)
-            
+
             Result.success()
         } catch (e: Exception) {
             Result.retry()
@@ -782,7 +782,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
 class TimeChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_TIME_CHANGED || 
+        if (intent.action == Intent.ACTION_TIME_CHANGED ||
             intent.action == Intent.ACTION_TIMEZONE_CHANGED) {
             triggerImmediateEvaluation(context)
         }
@@ -792,7 +792,7 @@ class TimeChangeReceiver : BroadcastReceiver() {
 private fun triggerImmediateEvaluation(context: Context) {
     val immediateRequest = OneTimeWorkRequestBuilder<WallpaperEvaluationWorker>()
         .build()
-    
+
     WorkManager.getInstance(context).enqueueUniqueWork(
         "WallpaperEvaluationWork",
         ExistingWorkPolicy.REPLACE,
