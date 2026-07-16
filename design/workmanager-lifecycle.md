@@ -23,9 +23,8 @@ The execution loop is managed by `WallpaperEvaluationWorker`, a subclass of `Cor
    - **Query Active Rules:** The worker fetches all active schedules (`is_active = 1`) from the Room Database.
    - **Determine Current Time:** The worker fetches the current time, calculating the day of the week and minutes from midnight ($0$ to $1439$). It also determines yesterday's weekday to evaluate overnight rules.
    - **Resolve Target Wallpaper:** Active schedules are filtered to check if their timing matches the current window (handling standard and overnight spans). The engine then resolves the winning wallpaper path independently for the Home screen (`FLAG_SYSTEM`) and Lock screen (`FLAG_LOCK`):
-     1. Sort by `priority` descending (highest priority wins).
-     2. Sort by `from_time_min` descending (most recently started wins).
-     3. Sort by schedule `id` descending (deterministic database primary key tie-breaker).
+     1. Sort by `from_time_min` descending (most recently started wins).
+     2. Sort by schedule `id` descending (deterministic database primary key tie-breaker).
 3. **Cache Validation & Redundancy Prevention:**
    - The evaluator fetches the active schedule IDs applied to the Home and Lock screens from Shared Preferences.
    - If the winning schedule ID matches the cached ID (cache hit), the worker skips the filesystem read and bitmap application, preventing unnecessary disk I/O and CPU cycles.
@@ -261,7 +260,7 @@ sequenceDiagram
 
     Worker->>Eval: evaluateAndApply(context, dao)
     activate Eval
-    Note over Eval: Sort rules by priority, start time, ID.<br/>Determine winning rule for Home & Lock screens.
+    Note over Eval: Sort rules by start time, ID.<br/>Determine winning rule for Home & Lock screens.
 
     alt Cache Miss (New wallpaper winning state)
         Eval->>WP: setBitmap(bakedFile, ..., FLAG_SYSTEM/FLAG_LOCK)
@@ -354,7 +353,6 @@ class WallpaperEvaluationWorkerTest {
             weekdays = "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY",
             fromTimeMin = 480, // 08:00 AM
             toTimeMin = 1020,  // 05:00 PM
-            priority = 10,
             homeWallpaperPath = mockFile.absolutePath,
             lockWallpaperPath = null,
             isActive = true
