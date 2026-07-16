@@ -1,7 +1,7 @@
 # Wireframe & User Flow Specification: Scheduled Custom Wallpaper Application
 
 ## Overview
-This document specifies the updated user interface layouts, interactive wireframes, and sequence flow for the duration-based scheduling model of the Wallpaper Scheduler application. The design introduces separation between the **Home screen** and **Lock screen** wallpaper targets, moving away from simple time-based switches to time-duration scheduling with priority resolution and resource-efficient local file management.
+This document specifies the updated user interface layouts, interactive wireframes, and sequence flow for the duration-based scheduling model of the Wallpaper Scheduler application. The design introduces separation between the **Home screen** and **Lock screen** wallpaper targets, moving away from simple time-based switches to time-duration scheduling with overlap resolution and resource-efficient local file management.
 
 ---
 
@@ -23,7 +23,7 @@ graph TB
         subgraph ScheduleList ["Schedule List (LazyColumn)"]
             subgraph Schedule1 ["Schedule 1: Work Hours (Active)"]
                 S1_Preview["[Home/Lock Thumbnails]"]
-                S1_Time["From 08:00 AM To 05:00 PM"]
+                S1_Time["From 08:00 to 17:00 (Locale-aware)"]
                 S1_Days["Mon, Tue, Wed, Thu, Fri"]
                 S1_Tags["Screens: [Home] [Lock]"]
                 S1_Toggle["Status: [ ON ]"]
@@ -31,7 +31,7 @@ graph TB
 
             subgraph Schedule2 ["Schedule 2: Evening (Disabled)"]
                 S2_Preview["[Home Thumbnail Only]"]
-                S2_Time["From 05:00 PM To 10:00 PM"]
+                S2_Time["From 17:00 to 22:00 (Locale-aware)"]
                 S2_Days["Sat, Sun"]
                 S2_Tags["Screens: [Home]"]
                 S2_Toggle["Status: [ OFF ]"]
@@ -40,7 +40,7 @@ graph TB
             subgraph Schedule3_Selected ["Schedule 3: Night (Selected in Multi-Select)"]
                 S3_Checkbox["[X] Checkbox"]
                 S3_Preview["[Lock Thumbnail Only]"]
-                S3_Time["From 10:00 PM To 06:00 AM"]
+                S3_Time["From 22:00 to 06:00 (Locale-aware)"]
                 S3_Days["Everyday"]
                 S3_Tags["Screens: [Lock]"]
                 S3_Toggle["Status: [ ON ]"]
@@ -89,8 +89,8 @@ graph TB
         end
 
         subgraph TimeRangeSection ["Duration Range Input Selector"]
-            FromTime["From: [ 08 ] : [ 00 ] ( AM )"]
-            ToTime["To: [ 05 ] : [ 00 ] [ PM ]"]
+            FromTime["From: [ 08 ] : [ 00 ] (Locale-aware format)"]
+            ToTime["To: [ 17 ] : [ 00 ] (Locale-aware format)"]
             RangeHint["Select start and end times for this schedule"]
         end
 
@@ -126,33 +126,28 @@ graph TB
 
 ---
 
-### 3. Crop Editor Screen
-The Crop Editor enables precise zoom, pan, and crop scaling before final rendering.
-- **Three Stacked Planes Layout:**
-  - **Plane 1 (Bottom):** Coil-rendered raw source image responding to scaling and translation gestures.
-  - **Plane 2 (Middle):** Translucent backdrop mask with a centered aspect-ratio grid viewfinder.
-  - **Plane 3 (Top):** Action headers and confirmation buttons.
+#### 3. Crop Editor Screen
+The Crop Editor enables precise zoom, pan, and crop scaling before final rendering using the device screen itself as the boundary.
+- **Two Planes Clamped Layout:**
+  - **Plane 1 (Bottom):** Coil-rendered raw source image responding to scaling and translation gestures, constrained to keep the image covering the full screen.
+  - **Plane 2 (Top):** UI controls, instruction labels, and confirmation buttons.
+- **Gesture Clamping Math:**
+  Let screen dimensions be $W \times H$ and scaled image dimensions be $W_{scaled} \times H_{scaled}$. Panning offset limits are calculated as:
+  $$|T_x| \le \frac{W_{scaled} - W}{2}, \quad |T_y| \le \frac{H_{scaled} - H}{2}$$
+  The gestures are clamped within these boundaries to prevent black margins.
 - **Target Selection Dialog/Modal:** Triggered on confirmation, presenting the user with options to set the cropped image destination: "Apply to Home Screen Only", "Apply to Lock Screen Only", or "Apply to Both".
 
-#### Diagram: Crop Editor Stacked Planes Layout
+#### Diagram: Crop Editor Clamped Planes Layout
 ```mermaid
 graph TB
-    subgraph CropEditorScreen ["Crop Editor Screen Layout (Stacked Canvas Planes)"]
-        subgraph Plane3 ["Plane 3: Action Controls Overlay (Top Layer)"]
-            ActionText["Text: '⛶ Move and scale image to fit crop area'"]
+    subgraph CropEditorScreen ["Crop Editor Screen Layout (Clamped Canvas Planes)"]
+        subgraph Plane2 ["Plane 2: Action Controls Overlay (Top Layer)"]
+            ActionText["Text: '⛶ Move and scale image to fit screen'"]
             ConfirmBtn["[Confirm Selection] (Triggers Dialog)"]
         end
 
-        subgraph Plane2 ["Plane 2: Translucent Overlay Mask (Middle Layer)"]
-            MaskTop["Translucent Mask (Top)"]
-            subgraph Cutout ["Centered Viewfinder Cutout (Transparent Window)"]
-                GridLines["[ Rule-of-Thirds Grid Guides ]"]
-            end
-            MaskBottom["Translucent Mask (Bottom)"]
-        end
-
         subgraph Plane1 ["Plane 1: Interactive Touch Surface (Bottom Layer)"]
-            GestureHandler["Gesture Detector (Scale, Pan translations)"]
+            GestureHandler["Gesture Detector (Scale, Clamped Pan translations)"]
             SourceImage["[ Coil Async Image Source (Subject to scale/translation) ]"]
         end
 
@@ -166,8 +161,7 @@ graph TB
     end
 
     style CropEditorScreen fill:#f9f9f9,stroke:#333,stroke-width:2px;
-    style Plane3 fill:#e0f2f1,stroke:#009688,stroke-width:2px;
-    style Plane2 fill:#fff3e0,stroke:#ff9800,stroke-width:2px;
+    style Plane2 fill:#e0f2f1,stroke:#009688,stroke-width:2px;
     style Plane1 fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px;
     style TargetDialog fill:#ffe0b2,stroke:#ff9800,stroke-width:2px;
 ```
@@ -204,7 +198,7 @@ sequenceDiagram
 
     %% Cropping & Target Dialog
     Note over User, Dialog: --- Crop Customization & Destination Selection ---
-    Crop-->>User: Show interactive crop interface (Plane 1-3)
+    Crop-->>User: Show interactive crop interface (Plane 1-2)
     User->>Crop: Gesture scaling (pinch) & translation (pan)
     User->>Crop: Tap "Confirm Selection"
     Crop->>Dialog: Show Target Selection Dialog
@@ -224,7 +218,7 @@ sequenceDiagram
     %% DB Persistence
     Note over Config, DB: --- SQLite DB Persistence (Shared Path Strategy) ---
     Note over Config: Map target to columns:<br/>Home -> home_wallpaper_path = path, lock_wallpaper_path = null<br/>Lock -> home_wallpaper_path = null, lock_wallpaper_path = path<br/>Both -> home_wallpaper_path = path, lock_wallpaper_path = path (Shared single-file)
-    Config->>DB: Insert/Update Schedule Record (Columns: home_wallpaper_path, lock_wallpaper_path, active, weekdays, start_time, end_time, priority)
+    Config->>DB: Insert/Update Schedule Record (Columns: home_wallpaper_path, lock_wallpaper_path, active, weekdays, start_time, end_time)
     DB-->>Config: Return Success
 
     %% Trigger & Evaluator Flow
@@ -234,7 +228,7 @@ sequenceDiagram
     DB-->>Eval: Return list of active rules
 
     Note over Eval: --- Independent Screen Evaluation ---
-    Note over Eval: Sort rules independently for Home (FLAG_SYSTEM) and Lock (FLAG_LOCK):<br/>1. Priority (Descending)<br/>2. Start Time (Descending)<br/>3. Schedule ID (Descending) as deterministic tie-breaker
+    Note over Eval: Sort rules independently for Home (FLAG_SYSTEM) and Lock (FLAG_LOCK):<br/>1. Start Time (Descending)<br/>2. Schedule ID (Descending) as deterministic tie-breaker
 
     alt Winning rule exists for target screen
         Note over Eval: Check cache: Is winning schedule ID different from current active cached ID?
@@ -294,9 +288,8 @@ Time shifts, timezone changes, and manual system clock modifications can lead to
 ### 4. Deterministic Rule Overlap Resolution & Redundancy Prevention
 When multiple schedules overlap in time coverage, the application resolves conflicts deterministically:
 - **Multi-Level Sort Order:** For each screen target, rules are queried and sorted in descending order by:
-  1. `priority` (user-defined priority value)
-  2. `start_time` (most recently started duration wins)
-  3. `id` (database primary key acts as a deterministic tie-breaker)
+  1. `start_time` (most recently started duration wins)
+  2. `id` (database primary key acts as a deterministic tie-breaker)
 - **Redundancy & Caching:** To avoid wasting battery and memory applying the same wallpaper repeatedly, the engine caches the winning `schedule_id` for both the Home and Lock screens. If the evaluator runs and the winning schedule matches the cache, the application step is bypassed.
 - **Safety Handling:** If a file is deleted from disk (e.g. by clean-up tools), the `WallpaperManager` execution block catches file-not-found exceptions gracefully, preventing crashes and keeping the current active wallpaper.
 

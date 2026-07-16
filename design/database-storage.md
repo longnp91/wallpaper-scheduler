@@ -4,7 +4,7 @@
 This document specifies the persistence and file storage architecture for the Wallpaper Scheduler application. To implement a reliable, duration-based wallpaper schedule with independent **Home screen** and **Lock screen** configurations, the application decouples database configurations from high-performance bitmap storage.
 
 The storage layer consists of two main components:
-1. **Room Database**: SQLite object-mapping library used to store the schedules' configuration metadata, timing constraints, day of week triggers, priority orders, and file path references. It acts as the single source of truth for the background evaluation engine.
+1. **Room Database**: SQLite object-mapping library used to store the schedules' configuration metadata, timing constraints, day of week triggers, overlap resolution ordering, and file path references. It acts as the single source of truth for the background evaluation engine.
 2. **Sandbox Filesystem Directory (`filesDir`)**: The application's internal private storage directory (`/data/user/0/com.example.customwallpaper/files/`). To avoid standard database performance degradation, high-resolution wallpaper images are never stored as database BLOBs. Instead, they are processed upfront ("baked" to match device screen dimension requirements, cropped, and compressed to high-quality JPEGs) and stored within this sandbox. The database rows merely point to these local files via absolute paths.
 
 ---
@@ -17,11 +17,10 @@ Below is the structural layout of the `schedules` table, detailing data types, n
 
 | Column Name | SQLite Type | Room/Kotlin Type | Nullability | Constraints | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | `INTEGER` | `Long` | `NOT NULL` | Primary Key, `autoGenerate = true` | The unique identifier auto-incremented by SQLite. Used as a deterministic tie-breaker for schedules of equal priority and start time. |
+| `id` | `INTEGER` | `Long` | `NOT NULL` | Primary Key, `autoGenerate = true` | The unique identifier auto-incremented by SQLite. Used as a deterministic tie-breaker for schedules of equal start times. |
 | `weekdays` | `TEXT` | `String` | `NOT NULL` | None | Comma-separated uppercase day names (e.g., `"MONDAY,TUESDAY,FRIDAY"`) indicating on which days this schedule rule triggers. |
 | `from_time_min` | `INTEGER` | `Int` | `NOT NULL` | `CHECK (from_time_min >= 0 AND from_time_min < 1440)` | The starting time represented as minutes from midnight (0 to 1439). |
 | `to_time_min` | `INTEGER` | `Int` | `NOT NULL` | `CHECK (to_time_min >= 0 AND to_time_min < 1440)` | The ending time represented as minutes from midnight (0 to 1439). Overnight ranges are supported (where `from_time_min` > `to_time_min`). |
-| `priority` | `INTEGER` | `Int` | `NOT NULL` | None | Numerical priority value (higher values win) used to resolve overlaps when multiple schedule durations are simultaneously active. |
 | `home_wallpaper_path` | `TEXT` | `String?` | `NULLABLE` | None | Absolute path to the baked JPEG file targeting the Home screen. If `null`, this schedule has no effect on the Home screen wallpaper. |
 | `lock_wallpaper_path` | `TEXT` | `String?` | `NULLABLE` | None | Absolute path to the baked JPEG file targeting the Lock screen. If `null`, this schedule has no effect on the Lock screen wallpaper. |
 | `is_active` | `INTEGER` | `Boolean` | `NOT NULL` | Default `1` (true) | Boolean flag (stored as 0/1 in SQLite) to enable/disable the schedule toggle via the Settings List UI. |
@@ -36,7 +35,6 @@ erDiagram
         string weekdays "e.g., MONDAY,TUESDAY"
         int from_time_min "0..1439"
         int to_time_min "0..1439"
-        int priority "Higher values win"
         string home_wallpaper_path "Nullable"
         string lock_wallpaper_path "Nullable"
         boolean is_active "Default true"
@@ -68,9 +66,6 @@ data class WallpaperSchedule(
 
     @ColumnInfo(name = "to_time_min")
     val toTimeMin: Int,        // End time (minutes from midnight: 0-1439)
-
-    @ColumnInfo(name = "priority")
-    val priority: Int,            // Numerical priority (higher values win)
 
     @ColumnInfo(name = "home_wallpaper_path")
     val homeWallpaperPath: String?,

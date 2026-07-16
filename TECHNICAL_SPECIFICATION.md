@@ -131,10 +131,9 @@ The UI layer is split into two primary components: the **Schedule Configuration 
 The configuration screen contains separate preview thumbnail slots for both the **Home screen** and the **Lock screen**. This allows users to individually preview, select, and customize wallpapers for each screen target. When creating or editing a schedule, tapping a preview slot launches the Storage Access Framework (SAF) picker to load and crop an image for that specific target.
 
 ### Crop Editor with Target Selection Dialog
-The editing layer leverages a layered `Box` architecture consisting of three stacked planes:
-1. **Plane 1 (Bottom):** Coil-rendered raw source image tracking gesture translations (pinch-to-zoom, pan).
-2. **Plane 2 (Middle):** Translucent backdrop mask with a centered aspect-ratio viewfinder cut-out stencil.
-3. **Plane 3 (Top):** Action headers and confirmation controls.
+The editing layer leverages a layered `Box` architecture consisting of two stacked planes:
+1. **Plane 1 (Bottom):** Coil-rendered raw source image tracking gesture translations (pinch-to-zoom, pan). Gesture offsets and scales are constrained using boundary clamping mathematics to ensure the image always fills the entire screen, preventing black bars or margins.
+2. **Plane 2 (Top):** UI controls, instructions, and confirmation buttons.
 
 On tapping **Confirm Selection**, a **Target Selection Dialog/Modal** is presented, letting the user set the crop's destination target: Home screen, Lock screen, or Both.
 
@@ -174,14 +173,22 @@ fun WallpaperCropEditor(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // PLANE 1: Interactive Touch Surface (Handles Scaling and Panning Translations)
+        // PLANE 1: Interactive Touch Surface (Handles Scaling and Panning Translations with clamping constraints)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         scale = (scale * zoom).coerceAtLeast(1f)
-                        offset += pan
+                        // Clamp offsets to restrict viewport to screen bounds
+                        offset = clampOffset(
+                            offset + pan,
+                            scale,
+                            screenW = size.width.toFloat(),
+                            screenH = size.height.toFloat(),
+                            imgW = sourceImageWidth, // derived from metadata or resolved painter
+                            imgH = sourceImageHeight
+                        )
                     }
                 }
         ) {
@@ -200,30 +207,9 @@ fun WallpaperCropEditor(
             )
         }
 
-        // PLANE 2: Fixed Visual Mask Overlay (Viewfinder Grid/Window stencil)
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val screenWidth = size.width
-            val screenHeight = size.height
-            val cropWidth = screenWidth * 0.9f
-            val cropHeight = screenHeight * 0.8f
-            val left = (screenWidth - cropWidth) / 2
-            val top = (screenHeight - cropHeight) / 2
-
-            // Draw translucent backing fill
-            drawRect(color = Color.Black.copy(alpha = 0.4f))
-
-            // Cut out clear center viewfinder window using Clear blend mode
-            drawRect(
-                color = Color.Transparent,
-                topLeft = Offset(left, top),
-                size = Size(cropWidth, cropHeight),
-                blendMode = BlendMode.Clear
-            )
-        }
-
-        // PLANE 3: Action Controls
+        // PLANE 2: UI Controls & Overlay
         Text(
-            text = "⛶ Move and scale image to fit crop area",
+            text = "⛶ Move and scale image to fit screen",
             color = Color.White,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -289,6 +275,69 @@ fun WallpaperCropEditor(
         }
     }
 }
+
+### Crop Clamping Boundary Mathematics
+To keep the source image filling the device screen without displaying empty margins or background colors (black bars), we apply boundary clamping constraints to the gestures.
+
+Let screen size be defined as $W \times H$.
+Let original source image dimensions be $w_{img} \times h_{img}$.
+The base scaling factor $S_{base}$ (matching standard crop layout behavior) and base image dimensions are:
+$$S_{base} = \max\left(\frac{W}{w_{img}}, \frac{H}{h_{img}}\right)$$
+$$W_{base} = w_{img} \times S_{base}$$
+$$H_{base} = h_{img} \times S_{base}$$
+
+Under a user zoom factor $S \ge 1.0$, the final scaled image dimensions are:
+$$W_{scaled} = W_{base} \times S$$
+$$H_{scaled} = H_{base} \times S$$
+
+The translation offsets $(T_x, T_y)$ relative to center alignment are restricted by:
+$$T_x \in \left[ -\frac{W_{scaled} - W}{2}, \frac{W_{scaled} - W}{2} \right]$$
+$$T_y \in \left[ -\frac{H_{scaled} - H}{2}, \frac{H_{scaled} - H}{2} \right]$$
+
+Any gesture pan translations exceeding these limits are clamped using Kotlin's `coerceIn` function:
+```kotlin
+fun clampOffset(offset: Offset, scale: Float, screenW: Float, screenH: Float, imgW: Float, imgH: Float): Offset {
+    val baseScale = maxOf(screenW / imgW, screenH / imgH)
+    val totalScale = baseScale * scale
+    val scaledW = imgW * totalScale
+    val scaledH = imgH * totalScale
+    val maxX = (scaledW - screenW).coerceAtLeast(0f) / 2f
+    val maxY = (scaledH - screenH).coerceAtLeast(0f) / 2f
+    return Offset(
+        x = offset.x.coerceIn(-maxX, maxX),
+        y = offset.y.coerceIn(-maxY, maxY)
+    )
+}
+```
+
+### Testing Graphics Coordinates Mapping
+Testing graphics coordinates on Android boils down to verifying a simple mathematical truth: Are the 4 corners of my user's cropping box mapping to the correct 4 coordinates of the original source image?
+
+To guarantee scaling and panning math is 100% accurate without manually setting the wallpaper every time, we verify this mapping mathematically. We define the transformation matrix $M$ that maps the original source image space to the viewport/cropping box space of size $W \times H$. To map coordinates from the viewport back to the original source image bounds $[0, w_{img}] \times [0, h_{img}]$, we apply the inverse crop matrix $M^{-1}$.
+
+Specifically, the mathematical verification involves transforming the four corners of the viewport:
+- Top-Left: $(0,0)$
+- Top-Right: $(W,0)$
+- Bottom-Left: $(0,H)$
+- Bottom-Right: $(W,H)$
+
+Through the inverse matrix $M^{-1}$:
+$$P_{source} = M^{-1} \cdot P_{viewport}$$
+
+For each corner $P_{viewport} \in \{(0,0), (W,0), (0,H), (W,H)\}$, the mapped point $P_{source} = (x_{img}, y_{img})$ must fall precisely within the boundaries of the original source image:
+$$0 \le x_{img} \le w_{img}$$
+$$0 \le y_{img} \le h_{img}$$
+
+By writing automated Unit Tests and Instrumented UI Tests, we can programmatically assert these matrix mapping conditions to verify the cropping math under various scale and pan values, ensuring there are no scaling artifacts, incorrect crop offsets, or out-of-bounds mapping errors.
+
+### Locale-Aware Time Formatting Rules
+
+Rather than using hardcoded 12-hour AM/PM formats or explicit locale assumptions, the application displays, formats, and receives time inputs based on the system locale and user preferences.
+1. **Dynamic 12/24-hour Detection:** The application queries `DateFormat.is24HourFormat(context)` to determine whether the user has active 24-hour formatting.
+2. **Formatting Output:** Schedule durations are formatted using:
+   - `java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)`
+   - Or using locale-aware patterns: `DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)` which automatically formats to `hh:mm a` or `HH:mm` based on system settings.
+3. **Time Pickers:** Duration range selections utilize Jetpack Compose's `TimePicker` API, passing the current standard clock settings to respect user preference overrides automatically.
 ```
 
 ---
@@ -411,7 +460,6 @@ data class WallpaperSchedule(
     @ColumnInfo(name = "weekdays") val weekdays: String,        // e.g. "MONDAY,TUESDAY,FRIDAY"
     @ColumnInfo(name = "from_time_min") val fromTimeMin: Int,    // Start time (minutes from midnight: 0-1439)
     @ColumnInfo(name = "to_time_min") val toTimeMin: Int,        // End time (minutes from midnight: 0-1439)
-    @ColumnInfo(name = "priority") val priority: Int,            // Numerical priority (higher values win)
     @ColumnInfo(name = "home_wallpaper_path") val homeWallpaperPath: String?,
     @ColumnInfo(name = "lock_wallpaper_path") val lockWallpaperPath: String?,
     @ColumnInfo(name = "is_active") val isActive: Boolean = true
@@ -543,7 +591,6 @@ The stateful evaluator resolves the current wallpaper state independently for th
 1. It reads the current weekday and the current time in minutes from midnight.
 2. It queries active schedules and filters for those containing the current day and matching the current time range (including overnight rules spanning midnight).
 3. For each target screen (Home, Lock), rules are sorted independently using a descending order fallback of:
-   * **Priority** (Highest wins)
    * **Start Time** (Most recently started wins)
    * **Schedule ID** (Deterministic database primary key tie-breaker)
 4. A cache containing the winning `schedule_id` is verified. If the winning ID matches the cache, application is skipped to prevent redundant filesystem read operations. If no scheduled rule is active, a no-op is executed, passively retaining the current wallpaper context.
@@ -595,8 +642,7 @@ object WallpaperEvaluator {
         val homeWinner = todaySchedules
             .filter { it.homeWallpaperPath != null }
             .sortedWith(
-                compareByDescending<WallpaperSchedule> { it.priority }
-                    .thenByDescending { it.fromTimeMin }
+                compareByDescending<WallpaperSchedule> { it.fromTimeMin }
                     .thenByDescending { it.id }
             ).firstOrNull()
 
@@ -616,8 +662,7 @@ object WallpaperEvaluator {
         val lockWinner = todaySchedules
             .filter { it.lockWallpaperPath != null }
             .sortedWith(
-                compareByDescending<WallpaperSchedule> { it.priority }
-                    .thenByDescending { it.fromTimeMin }
+                compareByDescending<WallpaperSchedule> { it.fromTimeMin }
                     .thenByDescending { it.id }
             ).firstOrNull()
 
