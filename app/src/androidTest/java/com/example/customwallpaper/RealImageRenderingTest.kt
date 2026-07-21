@@ -19,6 +19,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class RealImageRenderingTest {
@@ -39,22 +40,40 @@ class RealImageRenderingTest {
                 .build()
         viewModel = ScheduleViewModel(database.scheduleDao())
 
-        // Use the user's real image file for testing (pushed to device external storage)
-        val testImageFile = File("/sdcard/IMG_20230106_211053_753.jpg")
+        // Copy the real EXIF-rotated test image from /sdcard/ to the app's private cache
+        // directory so ContentResolver.openInputStream() can read it without needing
+        // READ_EXTERNAL_STORAGE (which is not granted to the test APK on Android 11+).
+        val sourceFile = File("/sdcard/IMG_20230106_211053_753.jpg")
         assertTrue(
             "Test image file must exist on device. Run: adb push samples/IMG_20230106_211053_753.jpg /sdcard/",
-            testImageFile.exists(),
+            sourceFile.exists(),
         )
 
-        testImageUri = Uri.fromFile(testImageFile)
+        // Copy the test image from the test APK's assets (bundled during build) to the
+        // app's cache directory, so the composable (running in the app process) can read it.
+        val cachedFile = File(context.cacheDir, "IMG_20230106_211053_753.jpg")
+        if (!cachedFile.exists()) {
+            val testContext = InstrumentationRegistry.getInstrumentation().context
+            testContext.assets.open("IMG_20230106_211053_753.jpg").use { input ->
+                FileOutputStream(cachedFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            assertTrue(
+                "Failed to cache test image at ${cachedFile.absolutePath}",
+                cachedFile.exists() && cachedFile.length() > 1000,
+            )
+        }
+        testImageUri = Uri.fromFile(cachedFile)
 
-        println("Testing with real image: ${testImageFile.absolutePath}")
+        println("Testing with real image: ${sourceFile.absolutePath} (cached to ${cachedFile.absolutePath})")
     }
 
     @After
     fun tearDown() {
         if (::database.isInitialized) database.close()
         if (::viewModel.isInitialized) viewModel.cleanupSessionTempFiles(excludeSaved = false)
+        File(context.cacheDir, "IMG_20230106_211053_753.jpg").delete()
     }
 
     @Test
