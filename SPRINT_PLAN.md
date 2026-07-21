@@ -280,40 +280,40 @@ Set up Robolectric unit testing to verify persistence, reference-counting cleanu
 
 Refactor database schemas to drop the priority constraint, introduce clamped full-screen boundary crop editor layouts with robust gesture mathematics, implement dynamic system-locale-aware time durations, and expand tests to verify scaling matrix calculations, screen resolution-independence, and WorkManager instrumentation features.
 
-- [ ] **Task 6.1: Removal of Priority Field from Database Schema and Models**
+- [x] **Task 6.1: Removal of Priority Field from Database Schema and Models**
   - **Target files:**
     - `/home/philong/wallpaper-scheduler/app/src/main/java/com/example/customwallpaper/wallpaperscheduler/data/WallpaperSchedule.kt`
     - `/home/philong/wallpaper-scheduler/app/src/main/java/com/example/customwallpaper/wallpaperscheduler/data/WallpaperDatabase.kt`
   - **Prerequisites:** Phase 5 completed.
   - **Verification:** Database compiles and operates correctly after dropping priority parameters. Unit and database integration tests run without schema conflicts.
 
-- [ ] **Task 6.2: Implement Clamped Crop UI and Touch Boundary Clamping Math**
+- [x] **Task 6.2: Implement Clamped Crop UI and Touch Boundary Clamping Math**
   - **Target files:**
     - `/home/philong/wallpaper-scheduler/app/src/main/java/com/example/customwallpaper/ui/screens/CropEditorScreen.kt`
   - **Prerequisites:** Task 6.1.
   - **Verification:** User scales/translates image in crop editor; verification checks confirm edge coordinates are clamped to device screen boundaries, preventing blank or black margins on all sides.
 
-- [ ] **Task 6.3: Implement Locale-Aware Time Format Display and Editing**
+- [x] **Task 6.3: Implement Locale-Aware Time Format Display and Editing**
   - **Target files:**
     - `/home/philong/wallpaper-scheduler/app/src/main/java/com/example/customwallpaper/ui/screens/MainSettingsScreen.kt`
     - `/home/philong/wallpaper-scheduler/app/src/main/java/com/example/customwallpaper/ui/screens/ScheduleConfigScreen.kt`
   - **Prerequisites:** Task 6.2.
   - **Verification:** Displays and duration pickers adapt automatically between 12-hour AM/PM and 24-hour format configurations based on system-level locale settings.
 
-- [ ] **Task 6.4: Unit Tests for Boundary Clamping Matrix Mathematics**
+- [x] **Task 6.4: Unit Tests for Boundary Clamping Matrix Mathematics**
   - **Target files:**
     - `/home/philong/wallpaper-scheduler/app/src/test/java/com/example/customwallpaper/ui/screens/CropEditorMathTest.kt`
   - **Prerequisites:** Task 6.2.
   - **Verification:** Run `./gradlew test`. Verify matrix transformation calculations correctly restrict pan offsets for simulated phone and tablet displays. To guarantee your scaling and panning math is 100% accurate without having to manually set the wallpaper every time, you can write automated Unit Tests and Instrumented UI Tests. Testing graphics coordinates on Android boils down to verifying a simple mathematical truth: Are the 4 corners of my user's cropping box mapping to the correct 4 coordinates of the original source image?
 
 
-- [ ] **Task 6.5: Resolution-Independence Verification and Tests**
+- [x] **Task 6.5: Resolution-Independence Verification and Tests**
   - **Target files:**
     - `/home/philong/wallpaper-scheduler/app/src/test/java/com/example/customwallpaper/wallpaperscheduler/pipeline/ResolutionIndependenceTest.kt`
   - **Prerequisites:** Task 6.2.
   - **Verification:** Run tests validating that crop scaling output matches physical pixels on diverse device screens (phone, tablet, foldable) without visual distortions.
 
-- [ ] **Task 6.6: WorkManager Instrumented Integration Tests**
+- [x] **Task 6.6: WorkManager Instrumented Integration Tests**
   - **Target files:**
     - `/home/philong/wallpaper-scheduler/app/src/androidTest/java/com/example/customwallpaper/worker/WorkManagerInstrumentedTest.kt`
   - **Prerequisites:** Task 6.1, Task 6.3.

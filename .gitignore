@@ -2,6 +2,9 @@
 .agents
 opencode.jsonc
 AGENTS.md
+.claude
+CLAUDE.md
+.mcp.json
 
 # Gradle
 .gradle/
@@ -16,3 +19,4 @@ local.properties
 
 # Temp files
 .tmp/
+samples/

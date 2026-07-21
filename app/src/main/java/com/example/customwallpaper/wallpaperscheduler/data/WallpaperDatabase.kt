@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 /**
  * The Room database that contains the schedules table.
  */
-@Database(entities = [WallpaperSchedule::class], version = 1, exportSchema = false)
+@Database(entities = [WallpaperSchedule::class], version = 2, exportSchema = false)
 abstract class WallpaperDatabase : RoomDatabase() {
     abstract fun scheduleDao(): ScheduleDao
 
@@ -23,7 +23,9 @@ abstract class WallpaperDatabase : RoomDatabase() {
                     context.applicationContext,
                     WallpaperDatabase::class.java,
                     "wallpaper_database",
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
         }
     }

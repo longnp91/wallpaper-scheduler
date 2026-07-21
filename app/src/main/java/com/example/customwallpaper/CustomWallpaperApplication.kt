@@ -1,10 +1,10 @@
 package com.example.customwallpaper
 
 import android.app.Application
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.example.customwallpaper.receiver.TimeChangeReceiver
 
 class CustomWallpaperApplication : Application() {
@@ -21,7 +21,7 @@ class CustomWallpaperApplication : Application() {
                 addAction(Intent.ACTION_TIMEZONE_CHANGED)
                 addAction(Intent.ACTION_DATE_CHANGED)
             }
-        registerReceiver(timeChangeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, timeChangeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     companion object {

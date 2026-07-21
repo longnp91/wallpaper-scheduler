@@ -1,18 +1,22 @@
 package com.example.customwallpaper.ui.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -22,6 +26,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,20 +35,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.example.customwallpaper.ScheduleViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -58,10 +65,123 @@ fun WallpaperCropEditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var scale by remember { mutableStateOf(1f) }
+    var scale by remember { mutableStateOf(1.0f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var showTargetDialog by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
+
+    var imageDimensions by remember { mutableStateOf<Size?>(null) }
+    var rotationDegrees by remember { mutableStateOf(0f) }
+    // Decoded bitmap is held in state for the lifetime of this composition. EXIF rotation
+    // is NOT applied at decode time — the screen applies it via graphicsLayer(rotationZ)
+    // below, so applying it twice (as Coil's AsyncImage does by default) would re-rotate
+    // an already-correctly-oriented bitmap. See design-crop-pan-fix.md §5.
+    var decodedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(imageUri) {
+        withContext(Dispatchers.IO) {
+            try {
+                val options =
+                    BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                context.contentResolver.openInputStream(imageUri).use { inputStream ->
+                    if (inputStream != null) {
+                        BitmapFactory.decodeStream(inputStream, null, options)
+                    } else {
+                        android.util.Log.e(
+                            "CropEditorScreen",
+                            "Could not open input stream for Uri: $imageUri",
+                        )
+                        return@withContext
+                    }
+                }
+                val rotation =
+                    context.contentResolver.openInputStream(imageUri).use { inputStream ->
+                        if (inputStream != null) {
+                            val exif = androidx.exifinterface.media.ExifInterface(inputStream)
+                            val orientation =
+                                exif.getAttributeInt(
+                                    androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                                    androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL,
+                                )
+                            when (orientation) {
+                                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                                else -> 0f
+                            }
+                        } else {
+                            0f
+                        }
+                    }
+                val srcWidth = options.outWidth
+                val srcHeight = options.outHeight
+                if (srcWidth <= 0 || srcHeight <= 0) {
+                    android.util.Log.e(
+                        "CropEditorScreen",
+                        "Invalid image dimensions: ${srcWidth}x$srcHeight",
+                    )
+                    return@withContext
+                }
+                // Store ORIGINAL image dimensions for baseScale calculation.
+                // This matches WallpaperBaker.kt's approach: baseScale calculates
+                // from original dimensions, then the subsampled bitmap is rendered
+                // within that layout. Using original dimensions ensures WYSIWYG parity.
+                imageDimensions = Size(srcWidth.toFloat(), srcHeight.toFloat())
+                rotationDegrees = rotation
+
+                // Subsample high-res sources before allocating pixels. This mirrors
+                // WallpaperBaker.kt's inSampleSize calculation so the preview and the
+                // bake decode through identical code paths (design-crop-pan-fix.md §5
+                // decode-path-parity invariant).
+                val metrics = context.resources.displayMetrics
+                val displayW = metrics.widthPixels
+                val displayH = metrics.heightPixels
+                var sampleSize = 1
+                if (srcWidth > displayW || srcHeight > displayH) {
+                    val halfWidth = srcWidth / 2
+                    val halfHeight = srcHeight / 2
+                    while ((halfWidth / sampleSize) >= displayW &&
+                        (halfHeight / sampleSize) >= displayH
+                    ) {
+                        sampleSize *= 2
+                    }
+                }
+
+                options.inJustDecodeBounds = false
+                options.inSampleSize = sampleSize
+                val bitmap =
+                    context.contentResolver.openInputStream(imageUri).use { inputStream ->
+                        if (inputStream != null) {
+                            BitmapFactory.decodeStream(inputStream, null, options)
+                        } else {
+                            null
+                        }
+                    }
+                // Guard against the LaunchedEffect being cancelled (URI change or exit)
+                // between decode and state assignment: if cancelled, recycle the bitmap
+                // ourselves because DisposableEffect.onDispose will not run for a value
+                // that was never published to decodedBitmap.
+                if (coroutineContext.isActive) {
+                    decodedBitmap = bitmap
+                } else {
+                    bitmap?.recycle()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CropEditorScreen", "Error reading image bounds", e)
+            }
+        }
+    }
+
+    // Release the decoded bitmap when the image URI changes or the composition exits
+    // so we do not leak native pixel memory across navigations.
+    DisposableEffect(imageUri) {
+        onDispose {
+            decodedBitmap?.recycle()
+            decodedBitmap = null
+        }
+    }
 
     fun applyCrop(target: String) {
         isProcessing = true
@@ -110,77 +230,94 @@ fun WallpaperCropEditorScreen(
         }
     }
 
-    Box(
+    // Read decodedBitmap at the top-level scope so any state change here triggers
+    // a recomposition of the entire composable (BoxWithConstraints uses
+    // SubcomposeLayout, and reads inside its content lambda were not reliably
+    // invalidating in instrumented tests). Reading at function scope guarantees
+    // recomposition propagates into the BoxWithConstraints content.
+    val currentBitmap = decodedBitmap
+
+    BoxWithConstraints(
         modifier =
             modifier
                 .fillMaxSize()
                 .background(Color.Black),
     ) {
-        // Plane 1: Bottom Layer - Gesture-tracked Image
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(0.5f, 5.0f)
-                            offset = offset + pan
-                        }
-                    },
-        ) {
-            AsyncImage(
-                model = imageUri,
-                contentDescription = "Original wallpaper image",
+        // Get screen dimensions in pixels (matches WallpaperBaker's DisplayMetrics approach)
+        val metrics = context.resources.displayMetrics
+        val screenWidth = metrics.widthPixels.toFloat()
+        val screenHeight = metrics.heightPixels.toFloat()
+
+        if (imageDimensions == null || currentBitmap == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else {
+            val dimensions = imageDimensions!!
+            val isRotated = (rotationDegrees == 90f || rotationDegrees == 270f)
+            // Decode-path-parity invariant: the preview decodes via the same
+            // BitmapFactory + inSampleSize path as WallpaperBaker.kt (no EXIF rotation
+            // applied at decode time), and baseScale uses NON-rotated dims to match
+            // WallpaperBaker.kt's non-rotated baseScale. Rotation is applied once via
+            // graphicsLayer(rotationZ) below, and the axis-swap is applied only when
+            // computing the clamp dims so post-rotation bounds are honored.
+            // See design-crop-pan-fix.md §5.2.
+            val baseScale = maxOf(screenWidth / dimensions.width, screenHeight / dimensions.height)
+            val coverWpx = dimensions.width * baseScale
+            val coverHpx = dimensions.height * baseScale
+
+            Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            translationX = offset.x,
-                            translationY = offset.y,
-                        ),
-                contentScale = ContentScale.Fit,
-            )
+                        .clipToBounds()
+                        .pointerInput(coverWpx, coverHpx, screenWidth, screenHeight) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                val newScale = (scale * zoom).coerceIn(1.0f, 5.0f)
+                                val ts = baseScale * newScale
+                                val sw = (if (isRotated) dimensions.height else dimensions.width) * ts
+                                val sh = (if (isRotated) dimensions.width else dimensions.height) * ts
+                                val mx = maxOf(0f, (sw - screenWidth) / 2f)
+                                val my = maxOf(0f, (sh - screenHeight) / 2f)
+                                scale = newScale
+                                offset =
+                                    Offset(
+                                        x = (offset.x + pan.x).coerceIn(-mx, mx),
+                                        y = (offset.y + pan.y).coerceIn(-my, my),
+                                    )
+                            }
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = BitmapPainter(currentBitmap.asImageBitmap()),
+                    contentDescription = "Original wallpaper image",
+                    modifier =
+                        Modifier
+                            .requiredSize(
+                                width = with(LocalDensity.current) { coverWpx.toDp() },
+                                height = with(LocalDensity.current) { coverHpx.toDp() },
+                            )
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                rotationZ = rotationDegrees,
+                                translationX = offset.x,
+                                translationY = offset.y,
+                            ),
+                    contentScale = ContentScale.Fit,
+                )
+            }
         }
 
-        // Plane 2: Middle Layer - Aspect Ratio Viewfinder Cutout
-        Canvas(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
-        ) {
-            // Draw transparent grey background overlay
-            drawRect(color = Color.Black.copy(alpha = 0.5f))
-
-            val screenWidth = size.width
-            val screenHeight = size.height
-
-            // Viewfinder matches screen aspect ratio (80% size)
-            val rectWidth = screenWidth * 0.8f
-            val rectHeight = screenHeight * 0.8f
-            val left = (screenWidth - rectWidth) / 2
-            val top = (screenHeight - rectHeight) / 2
-
-            // Cut out the center
-            drawRect(
-                color = Color.Transparent,
-                topLeft = Offset(left, top),
-                size = Size(rectWidth, rectHeight),
-                blendMode = BlendMode.Clear,
-            )
-
-            // Draw a border around the cutout
-            drawRect(
-                color = Color.White,
-                topLeft = Offset(left, top),
-                size = Size(rectWidth, rectHeight),
-                style = Stroke(width = 2.dp.toPx()),
-            )
-        }
-
-        // Plane 3: Top Layer - Instructions and Confirmation Button
+        // Top Layer UI - Instructions and Confirmation Buttons.
+        // Rendered unconditionally (independent of decode progress) so the chrome is
+        // always visible; only the image area waits on decodedBitmap above. This
+        // mirrors the original AsyncImage-based layout where the button overlay
+        // rendered before any decode completed.
         Box(
             modifier =
                 Modifier
