@@ -213,14 +213,17 @@ class ImageRenderingSizeTest {
         // If the image is grossly oversized, we'd see raw pixel data
         // If correctly sized, we see a properly scaled version
 
-        // Take a horizontal strip through the center and check for gradient variation
+        // Take a horizontal strip through the center and check for gradient variation.
+        // The generated gradient has red(x) = x * 255 / 4000, so the change per 10px
+        // step is ~0.64 — well below the original threshold of 30. Using 2 instead
+        // ensures we catch the subtle gradient while still filtering out noise.
         val centerY = bmp.height / 2
         var colorChanges = 0
         var lastRed = -1
         for (x in 0 until bmp.width step 10) {
             val pixel = bmp.getPixel(x, centerY)
             val red = Color.red(pixel)
-            if (lastRed >= 0 && Math.abs(red - lastRed) > 30) {
+            if (lastRed >= 0 && Math.abs(red - lastRed) > 2) {
                 colorChanges++
             }
             lastRed = red

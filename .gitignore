@@ -20,3 +20,4 @@ local.properties
 # Temp files
 .tmp/
 samples/
+app/src/androidTest/assets/

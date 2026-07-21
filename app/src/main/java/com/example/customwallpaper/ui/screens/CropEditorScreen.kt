@@ -2,6 +2,7 @@ package com.example.customwallpaper.ui.screens
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -73,9 +74,9 @@ fun WallpaperCropEditorScreen(
     var imageDimensions by remember { mutableStateOf<Size?>(null) }
     var rotationDegrees by remember { mutableStateOf(0f) }
     // Decoded bitmap is held in state for the lifetime of this composition. EXIF rotation
-    // is NOT applied at decode time — the screen applies it via graphicsLayer(rotationZ)
-    // below, so applying it twice (as Coil's AsyncImage does by default) would re-rotate
-    // an already-correctly-oriented bitmap. See design-crop-pan-fix.md §5.
+    // is applied at decode time (baked into the pixel data) rather than via
+    // graphicsLayer(rotationZ). This ensures the layout math operates on correctly-oriented
+    // dimensions so the preview fills the screen without overflowing on all sides.
     var decodedBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(imageUri) {
@@ -124,13 +125,6 @@ fun WallpaperCropEditorScreen(
                     )
                     return@withContext
                 }
-                // Store ORIGINAL image dimensions for baseScale calculation.
-                // This matches WallpaperBaker.kt's approach: baseScale calculates
-                // from original dimensions, then the subsampled bitmap is rendered
-                // within that layout. Using original dimensions ensures WYSIWYG parity.
-                imageDimensions = Size(srcWidth.toFloat(), srcHeight.toFloat())
-                rotationDegrees = rotation
-
                 // Subsample high-res sources before allocating pixels. This mirrors
                 // WallpaperBaker.kt's inSampleSize calculation so the preview and the
                 // bake decode through identical code paths (design-crop-pan-fix.md §5
@@ -140,11 +134,19 @@ fun WallpaperCropEditorScreen(
                 val displayH = metrics.heightPixels
                 var sampleSize = 1
                 if (srcWidth > displayW || srcHeight > displayH) {
-                    val halfWidth = srcWidth / 2
-                    val halfHeight = srcHeight / 2
-                    while ((halfWidth / sampleSize) >= displayW &&
-                        (halfHeight / sampleSize) >= displayH
-                    ) {
+                    val isRotated = rotation == 90f || rotation == 270f
+                    val effW = if (isRotated) srcHeight else srcWidth
+                    val effH = if (isRotated) srcWidth else srcHeight
+                    val halfWidth = effW / 2
+                    val halfHeight = effH / 2
+                    // For rotated images, any oversize dimension triggers subsampling
+                    // because the rotate-copy step doubles peak memory.
+                    val continueSubsample: (Int) -> Boolean = { s ->
+                        val wOk = (halfWidth / s) >= displayW
+                        val hOk = (halfHeight / s) >= displayH
+                        if (isRotated) wOk || hOk else wOk && hOk
+                    }
+                    while (continueSubsample(sampleSize)) {
                         sampleSize *= 2
                     }
                 }
@@ -159,14 +161,47 @@ fun WallpaperCropEditorScreen(
                             null
                         }
                     }
+
+                // Apply EXIF rotation to the bitmap data so the pixel array is correctly
+                // oriented. This eliminates the need for graphicsLayer(rotationZ) and
+                // ensures the layout math uses the effective display dimensions, preventing
+                // the rotated image from overflowing the screen on all sides.
+                val finalBitmap =
+                    if (bitmap != null && rotation != 0f) {
+                        val rotMatrix = Matrix().apply { postRotate(rotation) }
+                        val rotated =
+                            Bitmap.createBitmap(
+                                bitmap,
+                                0,
+                                0,
+                                bitmap.width,
+                                bitmap.height,
+                                rotMatrix,
+                                true,
+                            )
+                        bitmap.recycle()
+                        rotated
+                    } else {
+                        bitmap
+                    }
+
+                if (finalBitmap != null) {
+                    imageDimensions =
+                        Size(
+                            finalBitmap.width.toFloat(),
+                            finalBitmap.height.toFloat(),
+                        )
+                }
+                rotationDegrees = 0f
+
                 // Guard against the LaunchedEffect being cancelled (URI change or exit)
                 // between decode and state assignment: if cancelled, recycle the bitmap
                 // ourselves because DisposableEffect.onDispose will not run for a value
                 // that was never published to decodedBitmap.
                 if (coroutineContext.isActive) {
-                    decodedBitmap = bitmap
+                    decodedBitmap = finalBitmap
                 } else {
-                    bitmap?.recycle()
+                    finalBitmap?.recycle()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("CropEditorScreen", "Error reading image bounds", e)
@@ -257,14 +292,10 @@ fun WallpaperCropEditorScreen(
             }
         } else {
             val dimensions = imageDimensions!!
-            val isRotated = (rotationDegrees == 90f || rotationDegrees == 270f)
-            // Decode-path-parity invariant: the preview decodes via the same
-            // BitmapFactory + inSampleSize path as WallpaperBaker.kt (no EXIF rotation
-            // applied at decode time), and baseScale uses NON-rotated dims to match
-            // WallpaperBaker.kt's non-rotated baseScale. Rotation is applied once via
-            // graphicsLayer(rotationZ) below, and the axis-swap is applied only when
-            // computing the clamp dims so post-rotation bounds are honored.
-            // See design-crop-pan-fix.md §5.2.
+            // EXIF rotation is already applied to the bitmap data at decode time, so
+            // dimensions reflect the correct display orientation. baseScale is computed
+            // from these correctly-oriented dimensions, making the preview fill the screen
+            // in one dimension (aspect-fill) and overflow only in the other.
             val baseScale = maxOf(screenWidth / dimensions.width, screenHeight / dimensions.height)
             val coverWpx = dimensions.width * baseScale
             val coverHpx = dimensions.height * baseScale
@@ -278,8 +309,8 @@ fun WallpaperCropEditorScreen(
                             detectTransformGestures { _, pan, zoom, _ ->
                                 val newScale = (scale * zoom).coerceIn(1.0f, 5.0f)
                                 val ts = baseScale * newScale
-                                val sw = (if (isRotated) dimensions.height else dimensions.width) * ts
-                                val sh = (if (isRotated) dimensions.width else dimensions.height) * ts
+                                val sw = dimensions.width * ts
+                                val sh = dimensions.height * ts
                                 val mx = maxOf(0f, (sw - screenWidth) / 2f)
                                 val my = maxOf(0f, (sh - screenHeight) / 2f)
                                 scale = newScale
@@ -304,7 +335,6 @@ fun WallpaperCropEditorScreen(
                             .graphicsLayer(
                                 scaleX = scale,
                                 scaleY = scale,
-                                rotationZ = rotationDegrees,
                                 translationX = offset.x,
                                 translationY = offset.y,
                             ),
