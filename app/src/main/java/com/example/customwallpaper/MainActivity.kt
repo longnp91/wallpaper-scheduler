@@ -39,7 +39,7 @@ class ScheduleViewModel(val scheduleDao: ScheduleDao) : ViewModel() {
     val weekdaysState = mutableStateOf("")
     val fromTimeMinState = mutableStateOf(0)
     val toTimeMinState = mutableStateOf(0)
-    val priorityState = mutableStateOf("")
+
     val homeWallpaperPathState = mutableStateOf<String?>(null)
     val lockWallpaperPathState = mutableStateOf<String?>(null)
     val isActiveState = mutableStateOf(true)
@@ -70,7 +70,6 @@ class ScheduleViewModel(val scheduleDao: ScheduleDao) : ViewModel() {
         weekdaysState.value = ""
         fromTimeMinState.value = 0
         toTimeMinState.value = 0
-        priorityState.value = ""
         homeWallpaperPathState.value = null
         lockWallpaperPathState.value = null
         isActiveState.value = true
@@ -82,7 +81,6 @@ class ScheduleViewModel(val scheduleDao: ScheduleDao) : ViewModel() {
         weekdaysState.value = schedule.weekdays
         fromTimeMinState.value = schedule.fromTimeMin
         toTimeMinState.value = schedule.toTimeMin
-        priorityState.value = schedule.priority.toString()
         homeWallpaperPathState.value = schedule.homeWallpaperPath
         lockWallpaperPathState.value = schedule.lockWallpaperPath
         isActiveState.value = schedule.isActive
@@ -128,14 +126,12 @@ class ScheduleViewModel(val scheduleDao: ScheduleDao) : ViewModel() {
     suspend fun saveSchedule(context: android.content.Context): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val priority = priorityState.value.toIntOrNull() ?: 1
                 val newSchedule =
                     WallpaperSchedule(
                         id = editingScheduleId.value ?: 0L,
                         weekdays = weekdaysState.value,
                         fromTimeMin = fromTimeMinState.value,
                         toTimeMin = toTimeMinState.value,
-                        priority = priority,
                         homeWallpaperPath = homeWallpaperPathState.value,
                         lockWallpaperPath = lockWallpaperPathState.value,
                         isActive = isActiveState.value,

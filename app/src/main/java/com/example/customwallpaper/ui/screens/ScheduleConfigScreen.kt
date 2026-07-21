@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -31,7 +30,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -46,10 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.customwallpaper.ScheduleViewModel
+import com.example.customwallpaper.util.TimeFormatter.formatTime
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -112,7 +110,6 @@ fun ScheduleConfigScreen(
 
     val isValid =
         viewModel.weekdaysState.value.isNotEmpty() &&
-            viewModel.priorityState.value.isNotEmpty() &&
             (viewModel.homeWallpaperPathState.value != null || viewModel.lockWallpaperPathState.value != null)
 
     Scaffold(
@@ -193,7 +190,7 @@ fun ScheduleConfigScreen(
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(text = "Start: ${formatTime(viewModel.fromTimeMinState.value)}")
+                    Text(text = "Start: ${formatTime(context, viewModel.fromTimeMinState.value)}")
                 }
 
                 OutlinedButton(
@@ -204,22 +201,9 @@ fun ScheduleConfigScreen(
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(text = "End: ${formatTime(viewModel.toTimeMinState.value)}")
+                    Text(text = "End: ${formatTime(context, viewModel.toTimeMinState.value)}")
                 }
             }
-
-            // Priority Input
-            OutlinedTextField(
-                value = viewModel.priorityState.value,
-                onValueChange = { newValue ->
-                    if (newValue.all { it.isDigit() }) {
-                        viewModel.priorityState.value = newValue
-                    }
-                },
-                label = { Text("Priority (Higher Wins)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             // Dual Previews
             Text(text = "Wallpapers", style = MaterialTheme.typography.titleMedium)
@@ -346,6 +330,7 @@ private fun showTimePicker(
 ) {
     val currentHour = initialMin / 60
     val currentMinute = initialMin % 60
+    val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
     android.app.TimePickerDialog(
         context,
         { _, hourOfDay, minute ->
@@ -353,19 +338,6 @@ private fun showTimePicker(
         },
         currentHour,
         currentMinute,
-        false,
+        is24Hour,
     ).show()
-}
-
-private fun formatTime(minutes: Int): String {
-    val hour = minutes / 60
-    val min = minutes % 60
-    val ampm = if (hour >= 12) "PM" else "AM"
-    val displayHour =
-        when {
-            hour == 0 -> 12
-            hour > 12 -> hour - 12
-            else -> hour
-        }
-    return String.format("%02d:%02d %s", displayHour, min, ampm)
 }

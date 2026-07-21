@@ -18,8 +18,6 @@ data class WallpaperSchedule(
     val fromTimeMin: Int,
     @ColumnInfo(name = "to_time_min")
     val toTimeMin: Int,
-    @ColumnInfo(name = "priority")
-    val priority: Int,
     @ColumnInfo(name = "home_wallpaper_path")
     val homeWallpaperPath: String?,
     @ColumnInfo(name = "lock_wallpaper_path")

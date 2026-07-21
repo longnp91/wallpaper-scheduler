@@ -69,15 +69,13 @@ object WallpaperEvaluator {
         val cachedLockId = sharedPreferences.getLong(KEY_ACTIVE_LOCK_ID, -1L)
 
         // Resolve the winner schedule for Home and Lock targets independently by sorting:
-        // 1. Priority (higher wins)
-        // 2. Adjusted Start Time (most recently started wins: higher adjustedStartMin)
-        // 3. Schedule ID (descending tie-breaker)
+        // 1. Adjusted Start Time (most recently started wins: higher adjustedStartMin)
+        // 2. Schedule ID (descending tie-breaker)
         val homeWinner =
             matchingWithAdjustedStart
                 .filter { it.first.homeWallpaperPath != null }
                 .sortedWith(
-                    compareByDescending<Pair<WallpaperSchedule, Int>> { it.first.priority }
-                        .thenByDescending { it.second }
+                    compareByDescending<Pair<WallpaperSchedule, Int>> { it.second }
                         .thenByDescending { it.first.id },
                 )
                 .firstOrNull()?.first
@@ -86,8 +84,7 @@ object WallpaperEvaluator {
             matchingWithAdjustedStart
                 .filter { it.first.lockWallpaperPath != null }
                 .sortedWith(
-                    compareByDescending<Pair<WallpaperSchedule, Int>> { it.first.priority }
-                        .thenByDescending { it.second }
+                    compareByDescending<Pair<WallpaperSchedule, Int>> { it.second }
                         .thenByDescending { it.first.id },
                 )
                 .firstOrNull()?.first

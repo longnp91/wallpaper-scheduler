@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.customwallpaper.ScheduleViewModel
+import com.example.customwallpaper.util.TimeFormatter.formatTime
 import com.example.customwallpaper.wallpaperscheduler.data.WallpaperSchedule
 import java.io.File
 
@@ -191,6 +192,7 @@ fun ScheduleItem(
     onToggleActive: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     Card(
         modifier =
             modifier
@@ -228,7 +230,7 @@ fun ScheduleItem(
                 modifier = Modifier.weight(1f),
             ) {
                 Text(
-                    text = "From ${formatTime(schedule.fromTimeMin)} To ${formatTime(schedule.toTimeMin)}",
+                    text = "From ${formatTime(context, schedule.fromTimeMin)} To ${formatTime(context, schedule.toTimeMin)}",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -243,7 +245,7 @@ fun ScheduleItem(
                         if (schedule.lockWallpaperPath != null) "Lock" else null,
                     ).joinToString(" & ")
                 Text(
-                    text = "Target: $targetText (Priority: ${schedule.priority})",
+                    text = "Target: $targetText",
                     style = MaterialTheme.typography.bodySmall,
                 )
 
@@ -288,17 +290,4 @@ fun ScheduleItem(
             )
         }
     }
-}
-
-private fun formatTime(minutes: Int): String {
-    val hour = minutes / 60
-    val min = minutes % 60
-    val ampm = if (hour >= 12) "PM" else "AM"
-    val displayHour =
-        when {
-            hour == 0 -> 12
-            hour > 12 -> hour - 12
-            else -> hour
-        }
-    return String.format("%02d:%02d %s", displayHour, min, ampm)
 }

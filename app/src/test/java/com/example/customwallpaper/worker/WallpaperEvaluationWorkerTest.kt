@@ -79,7 +79,6 @@ class WallpaperEvaluationWorkerTest {
                     fromTimeMin = 0,
                     // 11:59 PM (covers current time)
                     toTimeMin = 1439,
-                    priority = 10,
                     homeWallpaperPath = mockFile.absolutePath,
                     lockWallpaperPath = null,
                     isActive = true,
@@ -116,7 +115,6 @@ class WallpaperEvaluationWorkerTest {
                     weekdays = "MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY",
                     fromTimeMin = 0,
                     toTimeMin = 1439,
-                    priority = 10,
                     homeWallpaperPath = mockFile.absolutePath,
                     lockWallpaperPath = null,
                     isActive = true,

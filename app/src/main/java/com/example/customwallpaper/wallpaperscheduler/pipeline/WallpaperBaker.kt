@@ -62,19 +62,6 @@ fun bakeWallpaperFromUri(
         val screenWidth = metrics.widthPixels
         val screenHeight = metrics.heightPixels
 
-        // Downsample high-resolution images to a power-of-2 factor that exceeds screen size.
-        // This acts as a primary defense against JVM OutOfMemoryErrors.
-        var inSampleSize = 1
-        if (srcWidth > screenWidth || srcHeight > screenHeight) {
-            val halfWidth = srcWidth / 2
-            val halfHeight = srcHeight / 2
-            while ((halfWidth / inSampleSize) >= screenWidth &&
-                (halfHeight / inSampleSize) >= screenHeight
-            ) {
-                inSampleSize *= 2
-            }
-        }
-
         // ExifInterface requires its own stream since it reads metadata headers.
         val rotationDegrees =
             try {
@@ -101,6 +88,27 @@ fun bakeWallpaperFromUri(
                 0
             }
 
+        // Downsample high-resolution images to a power-of-2 factor that exceeds screen size.
+        // This acts as a primary defense against JVM OutOfMemoryErrors.
+        // Account for EXIF rotation: the effective dimensions after rotation determine
+        // the subsample size, ensuring rotated bitmaps fit in memory during the rotate pass.
+        // For rotated images (which create a rotate-copy, doubling peak memory), any
+        // oversize dimension triggers subsampling; for non-rotated, both must oversize.
+        var inSampleSize = 1
+        if (srcWidth > screenWidth || srcHeight > screenHeight) {
+            val isRotated = (rotationDegrees == 90 || rotationDegrees == 270)
+            val effW = if (isRotated) srcHeight else srcWidth
+            val effH = if (isRotated) srcWidth else srcHeight
+            val halfWidth = effW / 2
+            val halfHeight = effH / 2
+            while (true) {
+                val wOk = (halfWidth / inSampleSize) >= screenWidth
+                val hOk = (halfHeight / inSampleSize) >= screenHeight
+                if (if (isRotated) !(wOk || hOk) else !(wOk && hOk)) break
+                inSampleSize *= 2
+            }
+        }
+
         options.inJustDecodeBounds = false
         options.inSampleSize = inSampleSize
 
@@ -117,6 +125,26 @@ fun bakeWallpaperFromUri(
         if (subsampledBitmap == null) {
             Log.e(TAG, "Failed to decode subsampled bitmap")
             return null
+        }
+
+        // Apply EXIF rotation to the bitmap data so the pixel array is correctly
+        // oriented. This mirrors the CropEditorScreen's approach and eliminates the
+        // need for matrix.postRotate() below, ensuring the baker and editor use
+        // identical dimensions for baseScale calculation.
+        if (rotationDegrees != 0) {
+            val rotMatrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+            val rotated =
+                Bitmap.createBitmap(
+                    subsampledBitmap,
+                    0,
+                    0,
+                    subsampledBitmap.width,
+                    subsampledBitmap.height,
+                    rotMatrix,
+                    true,
+                )
+            subsampledBitmap.recycle()
+            subsampledBitmap = rotated
         }
 
         // Create the canvas backed by a screen-sized bitmap.
@@ -139,9 +167,9 @@ fun bakeWallpaperFromUri(
 
         val canvasCenterX = screenWidth / 2f
         val canvasCenterY = screenHeight / 2f
-        // Apply scaling, rotation, and translation around the screen/bitmap center.
+        // Apply scaling and translation around the screen/bitmap center.
+        // Rotation is already applied to the bitmap data at decode time.
         matrix.postScale(adjustedScale, adjustedScale, canvasCenterX, canvasCenterY)
-        matrix.postRotate(rotationDegrees.toFloat(), canvasCenterX, canvasCenterY)
         matrix.postTranslate(offsetX, offsetY)
 
         val paint =
